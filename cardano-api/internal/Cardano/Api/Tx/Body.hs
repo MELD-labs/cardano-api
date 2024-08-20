@@ -748,13 +748,7 @@ fromShelleyTxOut sbe ledgerTxOut = shelleyBasedEraConstraints sbe $ do
     ShelleyBasedEraMary ->
       TxOut addressInEra txOutValue TxOutDatumNone ReferenceScriptNone
     ShelleyBasedEraAlonzo ->
-      TxOut
-        addressInEra
-        txOutValue
-        (fromAlonzoTxOutDatumHash AlonzoEraOnwardsAlonzo datumHashM)
-        ReferenceScriptNone
-      where
-      datumHashM = ledgerTxOut ^. L.dataHashTxOutL
+      TxOut addressInEra txOutValue TxOutDatumNone ReferenceScriptNone
     ShelleyBasedEraBabbage ->
       TxOut
         addressInEra
@@ -796,13 +790,6 @@ toAlonzoTxOutDatumHash TxOutDatumNone = SNothing
 toAlonzoTxOutDatumHash (TxOutDatumHash _ (ScriptDataHash dh)) = SJust dh
 toAlonzoTxOutDatumHash (TxOutDatumInline{}) = SNothing
 toAlonzoTxOutDatumHash (TxOutDatumInTx' _ (ScriptDataHash dh) _) = SJust dh
-
-fromAlonzoTxOutDatumHash
-  :: AlonzoEraOnwards era
-  -> StrictMaybe (Plutus.DataHash StandardCrypto)
-  -> TxOutDatum ctx era
-fromAlonzoTxOutDatumHash _ SNothing = TxOutDatumNone
-fromAlonzoTxOutDatumHash w (SJust hash) = TxOutDatumHash w $ ScriptDataHash hash
 
 toBabbageTxOutDatum
   :: (L.Era (ShelleyLedgerEra era), Ledger.EraCrypto (ShelleyLedgerEra era) ~ StandardCrypto)
@@ -1986,10 +1973,8 @@ fromLedgerTxOuts sbe body scriptdata =
     ShelleyBasedEraAlonzo ->
       [ fromAlonzoTxOut
           AlonzoEraOnwardsAlonzo
-          txdatums
           txout
-      | let txdatums = selectTxDatums scriptdata
-      , txout <- toList (body ^. L.outputsTxBodyL)
+      | txout <- toList (body ^. L.outputsTxBodyL)
       ]
     ShelleyBasedEraBabbage ->
       [ fromBabbageTxOut
@@ -2017,29 +2002,17 @@ selectTxDatums (TxBodyScriptData _ (Alonzo.TxDats' datums) _) = datums
 fromAlonzoTxOut
   :: ()
   => AlonzoEraOnwards era
-  -> Map (L.DataHash StandardCrypto) (L.Data ledgerera)
   -> L.TxOut (ShelleyLedgerEra era)
   -> TxOut CtxTx era
-fromAlonzoTxOut w txdatums txOut =
+fromAlonzoTxOut w txOut =
   alonzoEraOnwardsConstraints w $
     TxOut
       (fromShelleyAddr shelleyBasedEra (txOut ^. L.addrTxOutL))
       (TxOutValueShelleyBased sbe (txOut ^. L.valueTxOutL))
-      (fromAlonzoTxOutDatum w txdatums (txOut ^. L.dataHashTxOutL))
+      TxOutDatumNone
       ReferenceScriptNone
  where
   sbe = alonzoEraOnwardsToShelleyBasedEra w
-
-fromAlonzoTxOutDatum :: ()
-  => AlonzoEraOnwards era
-  -> Map (L.DataHash StandardCrypto) (L.Data ledgerera)
-  -> StrictMaybe (L.DataHash StandardCrypto)
-  -> TxOutDatum CtxTx era
-fromAlonzoTxOutDatum w txdatums = \case
-  SNothing -> TxOutDatumNone
-  SJust dh
-    | Just d <- Map.lookup dh txdatums  -> TxOutDatumInTx' w (ScriptDataHash dh) (fromAlonzoData d)
-    | otherwise                         -> TxOutDatumHash w (ScriptDataHash dh)
 
 fromBabbageTxOut
   :: forall era
